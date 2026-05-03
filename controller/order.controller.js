@@ -1,130 +1,211 @@
-const express = require("express");
-const router = express.Router();
 const Order = require("../models/order.model");
-const auth = require("../middleware/authMiddleware");
+const Notification = require("../models/notification.model");
 
 const generateNumber = (prefix) => {
   return prefix + Date.now() + Math.floor(Math.random() * 1000);
 };
 
-router.post("/step1", auth, async (req, res) => {
+exports.step1 = async (req, res) => {
   try {
+    const { bookingType, pickup, delivery } = req.body;
+
     const newOrder = await Order.create({
       userId: req.user.id,
       orderId: generateNumber("ORD"),
       trackingId: generateNumber("TRK"),
       tripNo: generateNumber("LR"),
-      bookingType: req.body.bookingType,
-      pickup: {
-        location: req.body.pickup,
-      },
-      delivery: {
-        location: req.body.delivery,
-      },
+
+      bookingType,
+
+      pickup,
+      delivery,
+
       status: "Pending",
     });
 
     res.status(201).json({
-      message: "Step 1 Saved",
+      success: true,
+      message: "Step 1 Saved Successfully",
       data: newOrder,
     });
+
   } catch (error) {
     res.status(500).json({
+      success: false,
       message: "Failed Step 1",
       error: error.message,
     });
   }
-});
+};
 
-router.put("/step2/:id", auth, async (req, res) => {
+
+exports.step2 = async (req, res) => {
   try {
-    const order = await Order.findByIdAndUpdate(
-      req.params.id,
-      {
-        pickup: {
-          ...req.body.pickup,
-        },
-        delivery: {
-          ...req.body.delivery,
-        },
-        weight: req.body.weight,
-        quantity: req.body.quantity,
-        vehicle: req.body.vehicle,
-        capacity: req.body.capacity,
-      },
-      { new: true },
-    );
+    const {
+      referenceNumber,
+      consignorCompany,
+      consigneeCompany,
+      senderName,
+      senderMobile,
+      receiverName,
+      receiverMobile,
+      selectedVehicle,
+      cargoItems,
+      amount,
+    } = req.body;
+
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    order.consignorCompany = consignorCompany;
+    order.consigneeCompany = consigneeCompany;
+
+    order.pickup.person = senderName;
+    order.pickup.phone = senderMobile;
+
+    order.delivery.person = receiverName;
+    order.delivery.phone = receiverMobile;
+
+    order.lrNo = referenceNumber;
+    order.docketNo = referenceNumber;
+
+    if (selectedVehicle?.length > 0) {
+      order.vehicle = selectedVehicle[0];
+    }
+
+    if (cargoItems?.length > 0) {
+      const firstCargo = cargoItems[0];
+
+      order.cargo = {
+        goodsDescription: firstCargo.goodsDescription,
+        quantity: firstCargo.quantity,
+        weight: firstCargo.weight,
+        dimension: `${firstCargo.length} x ${firstCargo.width} x ${firstCargo.height}`,
+      };
+
+      order.quantity = firstCargo.quantity;
+      order.weight = `${firstCargo.weight}kg`;
+    }
+
+    order.amount = amount || 0;
+
+    await order.save();
 
     res.status(200).json({
-      message: "Step 2 Saved",
+      success: true,
+      message: "Step 2 Saved Successfully",
       data: order,
     });
   } catch (error) {
     res.status(500).json({
+      success: false,
       message: "Failed Step 2",
       error: error.message,
     });
   }
-});
+};
 
-router.put("/payment/:id", auth, async (req, res) => {
+
+
+exports.payment = async (req, res) => {
   try {
     const { paymentType, amount, transactionId } = req.body;
-    if (!paymentType || !amount) {
-      return res.status(400).json({
-        message: "PaymentType and Amount are required",
-      });
-    }
+
     const order = await Order.findById(req.params.id);
+
     if (!order) {
       return res.status(404).json({
+        success: false,
         message: "Order not found",
       });
     }
+
     order.paymentType = paymentType;
     order.amount = amount;
-    order.status = "Booked";
-    order.paymentStatus = "Success";
     order.transactionId = transactionId || null;
+    order.paymentStatus = "Success";
+    order.status = "Booked";
     order.paidAt = new Date();
+
     await order.save();
+
+    const notification = await Notification.create({
+      recipientId: order.driverId || order.userId,
+      title: "New Order Booked",
+      message: `Order ${order.orderId} is now booked`,
+      type: "ORDER",
+      isRead: false
+    });
+
+    global.io.emit("newOrder", {
+      orderId: order.orderId,
+      status: order.status,
+    });
+
+    if (order.driverId) {
+      global.io.to(order.driverId.toString()).emit("notification", notification);
+    }
+
     res.status(200).json({
-      message: "Payment Successful & Order Booked",
+      success: true,
+      message: "Payment Successful",
       data: order,
     });
+
   } catch (error) {
     res.status(500).json({
+      success: false,
       message: "Payment Failed",
       error: error.message,
     });
   }
-});
+};
 
 
-router.get("/:id", auth, async (req, res) => {
+
+exports.getSingleOrder = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
 
-    res.status(200).json(order);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: order,
+    });
   } catch (error) {
     res.status(500).json({
-      message: "Order not found",
+      success: false,
+      message: "Failed to fetch order",
     });
   }
-});
+};
 
-router.get("/orderlist", auth, async (req, res) => {
+exports.orderlist = async (req, res) => {
   try {
     const orders = await Order.find({
       userId: req.user.id,
     }).sort({ createdAt: -1 });
 
-    res.status(200).json(orders);
+    res.status(200).json({
+      success: true,
+      data: orders,
+    });
   } catch (error) {
     res.status(500).json({
+      success: false,
       message: "Failed to fetch orders",
     });
   }
-});
-
-module.exports = router;
+};

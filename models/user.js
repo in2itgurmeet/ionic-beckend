@@ -1,19 +1,61 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
-const userSchema = new mongoose.Schema({
+const userSchema = new mongoose.Schema(
+{
   name: String,
-  email: { type: String, unique: true },
+  email: String,
   phone: String,
-  company: String,
   password: String,
 
-  role: { type: String, default: 'consigner' },
-  status: { type: String, default: 'active' },
+  role: {
+    type: String,
+    enum: ["consigner", "driver", "admin"],
+    default: "consigner"
+  },
 
-  isVerified: { type: Boolean, default: false },
-  otp: { type: String, default: null },
-  otpExpiry: { type: Date, default: null }
+  status: {
+    type: String,
+    default: "active"
+  },
 
-}, { timestamps: true });
+  consigner: {
+    companyName: String,
+    gstNumber: String,
+    address: String,
+    city: String,
+    state: String,
+    pincode: String
+  },
 
-module.exports = mongoose.model('User', userSchema);
+  driver: {
+    licenseNumber: String,
+    vehicleNumber: String,
+    vehicleType: String,
+    vehicleCapacity: String,
+    aadhaarNumber: String,
+    address: String,
+    city: String,
+    state: String,
+    pincode: String,
+    isAvailable: {
+      type: Boolean,
+      default: true
+    }
+  },
+
+  isVerified: {
+    type: Boolean,
+    default: false
+  },
+
+  otp: String,
+  otpExpiry: Date
+
+},
+{
+  timestamps: true,
+  versionKey: false
+}
+);
+
+module.exports = mongoose.model("User", userSchema);

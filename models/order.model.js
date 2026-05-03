@@ -1,169 +1,163 @@
 const mongoose = require("mongoose");
 
 const orderSchema = new mongoose.Schema(
-{
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-    required: true,
-  },
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
 
-  orderId: {
-    type: String,
-    required: true,
-    unique: true,
-    trim: true,
-  },
-
-  tripNo: {
-    type: String,
-    default: null,
-    trim: true,
-  },
-
-  trackingId: {
-    type: String,
-    default: null,
-    trim: true,
-  },
-  lrNo: {
-    type: String,
-    default: null,
-    trim: true,
-  },
-
-  // Docket Number
-  docketNo: {
-    type: String,
-    default: null,
-    trim: true,
-  },
-
-  status: {
-    type: String,
-    enum: [
-      "Pending",
-      "Booked",
-      "In-Transit",
-      "Delivered",
-      "Cancelled",
-    ],
-    default: "Pending",
-  },
-
-  bookingType: {
-    type: String,
-    enum: ["FTL", "PTL"],
-    required: true,
-  },
-
-  pickup: {
-    location: {
+    orderId: {
       type: String,
       required: true,
+      unique: true,
       trim: true,
     },
-    person: {
-      type: String,
-      trim: true,
-    },
-    phone: {
-      type: String,
-      trim: true,
-    },
-    date: String,
-    time: String,
-  },
 
-  delivery: {
-    location: {
+    tripNo: {
       type: String,
+      default: null,
+      trim: true,
+    },
+
+    trackingId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+
+    lrNo: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+
+    docketNo: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+
+    status: {
+      type: String,
+      enum: [
+        "Pending",
+        "Booked",
+        "Assigned",
+        "Pickup Started",
+        "In-Transit",
+        "Delivered",
+        "Cancelled"
+      ],
+      default: "Pending",
+    },
+    bookingType: {
+      type: String,
+      enum: ["FTL", "PTL"],
       required: true,
-      trim: true,
     },
-    person: {
+
+    consignorCompany: {
       type: String,
       trim: true,
+      default: null,
     },
-    phone: {
+
+    consigneeCompany: {
       type: String,
       trim: true,
+      default: null,
     },
-    date: String,
-    time: String,
-  },
 
-  weight: {
-    type: String,
-    trim: true,
-    default: "0kg",
-  },
+    pickup: {
+      location: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      person: String,
+      phone: String,
+      date: String,
+      time: String,
+    },
 
-  quantity: {
-    type: Number,
-    default: 0,
-    min: 0,
-  },
+    delivery: {
+      location: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      person: String,
+      phone: String,
+      date: String,
+      time: String,
+    },
 
-  vehicle: {
-    name: String,
-    number: String,
-    capacity: String,
-    dimension: String,
-  },
+    weight: {
+      type: String,
+      default: "0kg",
+    },
 
-  driver: {
-    name: String,
-    mobile: String,
-  },
+    quantity: {
+      type: Number,
+      default: 0,
+    },
 
-  cargo: {
-    goodsDescription: String,
-    quantity: Number,
-    weight: Number,
-    dimension: String,
-  },
+    vehicle: {
+      name: String,
+      number: String,
+      capacity: String,
+      dimension: String,
+    },
 
-  amount: {
-    type: Number,
-    default: 0,
-    min: 0,
-  },
+    driverId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
 
-  paymentType: {
-    type: String,
-    enum: ["Prepaid", "COD", "TO_PAY"],
-    default: "Prepaid",
-  },
-  invoiceId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Invoice",
-    default: null,
-  },
+    driver: {
+      name: String,
+      mobile: String,
+    },
 
-  shippingLabelId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "ShippingLabel",
-    default: null,
-  },
+    acceptedAt: {
+      type: Date,
+      default: null,
+    },
 
-  lorryReceiptId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "LorryReceipt",
-    default: null,
-  },
+    pickupStartedAt: {
+      type: Date,
+      default: null,
+    },
 
-  proofDeliveryId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "ProofDelivery",
-    default: null,
-  },
+    deliveredAt: {
+      type: Date,
+      default: null,
+    },
+    cargo: {
+      goodsDescription: String,
+      quantity: Number,
+      weight: Number,
+      dimension: String,
+    },
 
-},
-{
-  timestamps: true,
-  versionKey: false,
-}
+    amount: {
+      type: Number,
+      default: 0,
+    },
+
+    paymentType: {
+      type: String,
+      enum: ["Prepaid", "COD", "TO_PAY", "UPI"],
+      default: "Prepaid",
+    },
+  },
+  {
+    timestamps: true,
+    versionKey: false,
+  },
 );
 
 module.exports = mongoose.model("orders", orderSchema);

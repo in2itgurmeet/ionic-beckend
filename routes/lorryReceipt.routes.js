@@ -2,7 +2,7 @@
 const express = require("express");
 const router = express.Router();
 
-const lorryReceiptController = require("../controllers/lorryReceipt.controller");
+const lorryReceiptController = require("../controller/lorryReceipt.controller");
 const auth = require("../middleware/authMiddleware");
 
 // All LR List

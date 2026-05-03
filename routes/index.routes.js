@@ -9,16 +9,22 @@ const invoiceRoutes = require("./invoice.routes");
 const shippingLabelRoutes = require("./shippingLabel.routes");
 const lorryReceiptRoutes = require("./lorryReceipt.routes");
 const proofDeliveryRoutes = require("./proofDelivery.routes");
-
+const driverRoutes = require("./driver.routes");
+const driverOrderRoutes = require("./driverOrder.routes");
+const orderNotification = require("./notification.routes");
 
 router.use("/auth", authRoutes);
 router.use("/order", orderRoutes);
 router.use("/dashboard", dashboardRoutes);
 
-
 router.use("/invoice", invoiceRoutes);
 router.use("/shipping-label", shippingLabelRoutes);
 router.use("/lorry-receipt", lorryReceiptRoutes);
 router.use("/proof-delivery", proofDeliveryRoutes);
+
+// driver
+router.use("/auth", driverRoutes );
+router.use("/driver-order", driverOrderRoutes);
+router.use("/notification", orderNotification);
 
 module.exports = router;
