@@ -6,8 +6,10 @@ const userSchema = new mongoose.Schema(
     email: String,
     phone: String,
     password: String,
-    profileImage: String,
-
+    profileImage: {
+      type: String,
+      default: "",
+    },
     role: {
       type: String,
       enum: ["consigner", "driver", "admin"],

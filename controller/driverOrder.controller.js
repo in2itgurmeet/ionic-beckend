@@ -129,16 +129,13 @@ exports.acceptOrder = async (req, res) => {
 exports.rejectOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
-
     const order = await Order.findById(orderId);
-
     if (!order) {
       return res.status(404).json({
         success: false,
         message: "Order not found",
       });
     }
-
     order.driverId = null;
     order.driver = null;
     order.status = "Booked";

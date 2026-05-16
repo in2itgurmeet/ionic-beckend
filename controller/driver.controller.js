@@ -3,6 +3,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const sendEmail = require("../utils/sendEmail");
 const { otpTemplate } = require("../utils/emailTemplate");
+const fs = require("fs");
 
 exports.driverRegister = async (req, res) => {
   try {
@@ -313,22 +314,13 @@ exports.getDriverProfileImage = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const driver = await User.findOne({
-      _id: userId,
-      role: "driver"
-    }).select("profileImage");
-
-    if (!driver) {
-      return res.status(404).json({
-        success: false,
-        message: "Driver not found"
-      });
-    }
+    const user = await User.findById(userId)
+      .select("profileImage");
 
     res.status(200).json({
       success: true,
       data: {
-        profileImage: driver.profileImage
+        profileImage: user.profileImage
       }
     });
 
@@ -341,43 +333,36 @@ exports.getDriverProfileImage = async (req, res) => {
 };
 // UPDATE DRIVER PROFILE IMAGE ONLY
 // PUT /driver/profile-image
-exports.updateDriverProfileImage = async (req, res) => {
+exports.uploadDriverProfileImage = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const { profileImage } = req.body;
-
-    if (!profileImage) {
+    if (!req.file) {
       return res.status(400).json({
         success: false,
-        message: "Profile image is required"
+        message: "Please upload image"
       });
     }
 
-    const updated = await User.findOneAndUpdate(
+    // Base64 convert
+    const base64Image =
+      `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
+
+    // Save in DB
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
       {
-        _id: userId,
-        role: "driver"
-      },
-      {
-        profileImage: profileImage
+        profileImage: base64Image
       },
       {
         new: true
       }
-    ).select("name email phone profileImage role driver");
-
-    if (!updated) {
-      return res.status(404).json({
-        success: false,
-        message: "Driver not found"
-      });
-    }
+    );
 
     res.status(200).json({
       success: true,
-      message: "Profile image updated successfully",
-      data: updated
+      message: "Profile image uploaded",
+      data: updatedUser.profileImage
     });
 
   } catch (error) {
