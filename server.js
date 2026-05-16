@@ -25,7 +25,10 @@ const io = new Server(server, {
 global.io = io;
 
 io.on("connection", (socket) => {
-  console.log("Socket Connected:", socket.id);
+
+  socket.on("join", (userId) => {
+    socket.join(userId);
+  });
 
   socket.on("disconnect", () => {
     console.log("Socket Disconnected:", socket.id);

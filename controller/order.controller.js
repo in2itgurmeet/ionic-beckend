@@ -14,13 +14,10 @@ exports.step1 = async (req, res) => {
       orderId: generateNumber("ORD"),
       trackingId: generateNumber("TRK"),
       tripNo: generateNumber("LR"),
-
       bookingType,
-
       pickup,
       delivery,
-
-      status: "Pending",
+      status: "Draft",
     });
 
     res.status(201).json({
@@ -116,9 +113,7 @@ exports.step2 = async (req, res) => {
 exports.payment = async (req, res) => {
   try {
     const { paymentType, amount, transactionId } = req.body;
-
     const order = await Order.findById(req.params.id);
-
     if (!order) {
       return res.status(404).json({
         success: false,

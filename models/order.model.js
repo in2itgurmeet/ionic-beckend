@@ -42,15 +42,15 @@ const orderSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: [
-        "Pending",
+        "Draft",
         "Booked",
         "Assigned",
         "Pickup Started",
         "In-Transit",
         "Delivered",
-        "Cancelled"
+        "Cancelled",
       ],
-      default: "Pending",
+      default: "Draft",
     },
     bookingType: {
       type: String,
