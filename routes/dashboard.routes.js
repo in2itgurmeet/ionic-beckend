@@ -12,6 +12,6 @@ const auth = require("../middleware/authMiddleware");
  * @access Private
  * @author Gurmeet Kumar
  */
-router.get("/dashboard", auth, dashboardController.getDashboard);
+router.get("/consigner", auth, dashboardController.getDashboard);
 
 module.exports = router;

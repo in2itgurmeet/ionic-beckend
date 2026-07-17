@@ -153,6 +153,37 @@ const orderSchema = new mongoose.Schema(
       enum: ["Prepaid", "COD", "TO_PAY", "UPI"],
       default: "Prepaid",
     },
+
+    upiId: {
+      type: String,
+      default: null,
+    },
+
+    transactionId: {
+      type: String,
+      default: null,
+    },
+
+    paymentStatus: {
+      type: String,
+      enum: ["Pending", "Success", "Failed"],
+      default: "Pending",
+    },
+
+    paidAt: {
+      type: Date,
+      default: null,
+    },
+
+    distance: {
+      type: String,
+      default: null,
+    },
+
+    expectedTravelTime: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,

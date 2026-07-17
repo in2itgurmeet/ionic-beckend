@@ -9,6 +9,10 @@ exports.step1 = async (req, res) => {
   try {
     const { bookingType, pickup, delivery } = req.body;
 
+    const randomDistance = Math.floor(Math.random() * 1300) + 200;
+    const expectedDays = Math.ceil(randomDistance / 400);
+    const expectedTravelTime = `${expectedDays} Day${expectedDays > 1 ? 's' : ''}`;
+
     const newOrder = await Order.create({
       userId: req.user.id,
       orderId: generateNumber("ORD"),
@@ -17,6 +21,8 @@ exports.step1 = async (req, res) => {
       bookingType,
       pickup,
       delivery,
+      distance: `${randomDistance} km`,
+      expectedTravelTime,
       status: "Draft",
     });
 
@@ -73,7 +79,13 @@ exports.step2 = async (req, res) => {
     order.docketNo = referenceNumber;
 
     if (selectedVehicle?.length > 0) {
-      order.vehicle = selectedVehicle[0];
+      const v = selectedVehicle[0];
+      order.vehicle = {
+        name: v.name,
+        number: v.number || null,
+        capacity: v.capacity,
+        dimension: v.dimensions || v.dimension || null,
+      };
     }
 
     if (cargoItems?.length > 0) {
@@ -112,7 +124,7 @@ exports.step2 = async (req, res) => {
 
 exports.payment = async (req, res) => {
   try {
-    const { paymentType, amount, transactionId } = req.body;
+    const { paymentType, amount, transactionId, upiId } = req.body;
     const order = await Order.findById(req.params.id);
     if (!order) {
       return res.status(404).json({
@@ -124,6 +136,7 @@ exports.payment = async (req, res) => {
     order.paymentType = paymentType;
     order.amount = amount;
     order.transactionId = transactionId || null;
+    order.upiId = upiId || null;
     order.paymentStatus = "Success";
     order.status = "Booked";
     order.paidAt = new Date();
@@ -201,6 +214,34 @@ exports.orderlist = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch orders",
+    });
+  }
+};
+
+exports.updateOrderStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    order.status = status;
+    await order.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Order status updated to ${status}`,
+      data: order,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to update order status",
+      error: error.message,
     });
   }
 };
