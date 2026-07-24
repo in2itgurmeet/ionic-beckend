@@ -19,4 +19,11 @@ router.get(
   lorryReceiptController.getLorryReceiptByNo
 );
 
+// Share LR via Email
+router.post(
+  "/share",
+  auth,
+  lorryReceiptController.shareLorryReceipt
+);
+
 module.exports = router;

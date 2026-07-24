@@ -1,5 +1,6 @@
 const Order = require("../models/order.model");
 const User = require("../models/user");
+const LorryReceipt = require("../models/lorryReceipt.model");
 
 const getNumber = (val) => {
   if (!val) return 0;
@@ -104,6 +105,22 @@ exports.acceptOrder = async (req, res) => {
     order.acceptedAt = new Date();
 
     await order.save();
+
+    await LorryReceipt.findOneAndUpdate(
+      { orderId: order._id },
+      {
+        vehicle: {
+          number: driver.driver?.vehicleNumber || "MH 04 AA 2025",
+          type: driver.driver?.vehicleType || "20FT Eicher",
+          rtoNo: "HR55"
+        },
+        driver: {
+          name: driver.name,
+          mobile: driver.phone,
+          licenseNo: driver.driver?.licenseNumber || "DL0420110012345"
+        }
+      }
+    );
 
     global.io.emit("orderAccepted", {
       orderId: order.orderId,

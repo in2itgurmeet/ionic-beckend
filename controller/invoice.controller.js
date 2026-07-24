@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Invoice = require("../models/invoice.model");
 
 exports.getInvoiceList = async (req, res) => {
@@ -25,10 +26,14 @@ exports.getInvoiceByNo = async (req, res) => {
     const userId = req.user.id;
     const { invoiceNo } = req.params;
 
-    const data = await Invoice.findOne({
-      userId,
-      invoiceNo
-    });
+    let query = { userId };
+    if (mongoose.Types.ObjectId.isValid(invoiceNo)) {
+      query.$or = [{ orderId: invoiceNo }, { invoiceNo }];
+    } else {
+      query.invoiceNo = invoiceNo;
+    }
+
+    const data = await Invoice.findOne(query);
 
     if (!data) {
       return res.status(404).json({

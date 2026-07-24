@@ -161,3 +161,67 @@ exports.resetPassword = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
+
+exports.getProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("-password -otp -otpExpiry");
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    res.status(200).json({ success: true, data: user });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.updateProfile = async (req, res) => {
+  try {
+    const { name, email, phone, consigner } = req.body;
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.id,
+      {
+        name,
+        email,
+        phone,
+        consigner: {
+          companyName: consigner?.companyName,
+          gstNumber: consigner?.gstNumber,
+          address: consigner?.address,
+          city: consigner?.city,
+          state: consigner?.state,
+          pincode: consigner?.pincode,
+        }
+      },
+      { new: true }
+    ).select("-password");
+
+    res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      data: updatedUser
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.uploadProfileImage = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "Please upload an image" });
+    }
+    const base64Image = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.id,
+      { profileImage: base64Image },
+      { new: true }
+    );
+    res.status(200).json({
+      success: true,
+      message: "Profile image updated successfully",
+      data: updatedUser.profileImage
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

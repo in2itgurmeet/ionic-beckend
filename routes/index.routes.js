@@ -12,10 +12,12 @@ const proofDeliveryRoutes = require("./proofDelivery.routes");
 const driverRoutes = require("./driver.routes");
 const driverOrderRoutes = require("./driverOrder.routes");
 const orderNotification = require("./notification.routes");
+const vehicleRoutes = require("./vehicle.routes");
 
 router.use("/auth", authRoutes);
 router.use("/order", orderRoutes);
 router.use("/dashboard", dashboardRoutes);
+router.use("/vehicles", vehicleRoutes);
 
 router.use("/invoice", invoiceRoutes);
 router.use("/shipping-label", shippingLabelRoutes);
