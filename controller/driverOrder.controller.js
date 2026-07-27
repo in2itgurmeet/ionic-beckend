@@ -1,6 +1,7 @@
 const Order = require("../models/order.model");
 const User = require("../models/user");
 const LorryReceipt = require("../models/lorryReceipt.model");
+const ProofDelivery = require("../models/proofDelivery.model");
 
 const getNumber = (val) => {
   if (!val) return 0;
@@ -261,7 +262,7 @@ exports.getDriverHistory = async (req, res) => {
 
     const finalData = orders.map((item, index) => ({
       id: skip + index + 1,
-
+      _id: item._id,
       orderId: item.orderId,
       tripNo: item.tripNo,
 
@@ -299,6 +300,180 @@ exports.getDriverHistory = async (req, res) => {
       data: finalData
     });
 
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+/* ===================================================
+   UPDATE ORDER STATUS (DRIVER ACTIONS)
+=================================================== */
+exports.updateDriverOrderStatus = async (req, res) => {
+  try {
+    const driverId = req.user.id;
+    const { orderId } = req.params;
+    const { status } = req.body;
+
+    const validStatuses = ["Draft", "Booked", "Assigned", "Pickup Started", "In-Transit", "Delivered", "Cancelled"];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status value",
+      });
+    }
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    if (order.driverId?.toString() !== driverId) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to update this order status",
+      });
+    }
+
+    order.status = status;
+    if (status === "Pickup Started") {
+      order.pickupStartedAt = new Date();
+    } else if (status === "In-Transit") {
+      // Transit start
+    } else if (status === "Delivered") {
+      order.deliveredAt = new Date();
+    }
+
+    await order.save();
+
+    // Trigger socket notifications
+    global.io.emit("orderStatusUpdated", {
+      orderId: order.orderId,
+      status: order.status,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Order status updated to ${status}`,
+      data: order,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+/* ===================================================
+   UPLOAD DRIVER POD (DELIVER TRIP)
+=================================================== */
+exports.uploadDriverPOD = async (req, res) => {
+  try {
+    const driverId = req.user.id;
+    const { orderId } = req.params;
+    const { signatureImage, deliveryPhoto, remarks, receiverName, receiverMobile } = req.body;
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    if (order.driverId?.toString() !== driverId) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to upload POD for this order",
+      });
+    }
+
+    // Update order status to Delivered
+    order.status = "Delivered";
+    order.deliveredAt = new Date();
+    await order.save();
+
+    // Create or update ProofDelivery record
+    const updatedPOD = await ProofDelivery.findOneAndUpdate(
+      { orderId: order._id },
+      {
+        deliveredAt: new Date().toLocaleString(),
+        status: "Delivered",
+        signatureImage: signatureImage || "assets/icon/logo.jpg",
+        deliveryPhoto: deliveryPhoto || "",
+        remarks: remarks || "Goods delivered successfully",
+        receiver: {
+          name: receiverName || order.delivery?.person || "",
+          mobile: receiverMobile || order.delivery?.phone || ""
+        }
+      },
+      { new: true, upsert: true }
+    );
+
+    // Emit updates
+    global.io.emit("orderStatusUpdated", {
+      orderId: order.orderId,
+      status: order.status,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Proof of Delivery uploaded successfully",
+      data: updatedPOD,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+/* ===================================================
+   GET DRIVER STATISTICS (TILES INFO)
+=================================================== */
+exports.getDriverStats = async (req, res) => {
+  try {
+    const driverId = req.user.id;
+
+    // Find all delivered/completed orders for this driver
+    const completedOrders = await Order.find({
+      driverId,
+      status: "Delivered"
+    });
+
+    const totalCompleted = completedOrders.length;
+    
+    let totalEarnings = 0;
+    let totalKm = 0;
+
+    completedOrders.forEach(order => {
+      totalEarnings += order.amount || 0;
+      if (order.distance) {
+        // Parse numerical distance from string (e.g. "293 km" or "1200 km")
+        const kmVal = parseInt(order.distance.toString().replace(/[^0-9]/g, "")) || 0;
+        totalKm += kmVal;
+      }
+    });
+
+    // Mock tips as 5% of earnings (since it's not a field in the model yet)
+    const totalTips = Math.round(totalEarnings * 0.05);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        totalCompleted,
+        totalEarnings,
+        totalTips,
+        totalKm
+      }
+    });
   } catch (error) {
     return res.status(500).json({
       success: false,
