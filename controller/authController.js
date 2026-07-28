@@ -46,9 +46,6 @@ exports.login = async (req, res) => {
 exports.register = async (req, res) => {
   try {
     const { name, email, phone, company, password } = req.body;
-    if (!name || !email || !phone || !company || !password) {
-      return res.status(400).json({ message: "All fields are required" });
-    }
     const existingEmail = await User.findOne({ email });
     if (existingEmail) {
       return res.status(400).json({ message: "Email already exists" });

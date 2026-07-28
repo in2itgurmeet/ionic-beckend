@@ -1,5 +1,5 @@
 const defaultVehicles = [
-  { name: 'Tata Ace (Chota Hathi)', capacity: '850kg', dimensions: '7FT X 4.5FT X 5FT', img: 'https://upload.wikimedia.org/wikipedia/commons/e/ea/Tata_Ace.jpg' },
+  { name: 'Tata Ace (Chota Hathi)', capacity: '850kg', dimensions: '7FT X 4.5FT X 5FT', img: 'https://i.pinimg.com/736x/3f/76/69/3f766918e96eaad3423b2fdffcfb31d6.jpg' },
   { name: 'Mahindra Bolero Pickup', capacity: '1.5 Ton', dimensions: '8.2FT X 5FT X 5.5FT', img: 'https://upload.wikimedia.org/wikipedia/commons/d/df/Mahindra_Bolero_Pick-Up.jpg' },
   { name: 'Ashok Leyland Dost', capacity: '1.8 Ton', dimensions: '8.2FT X 5.3FT X 5.5FT', img: 'https://upload.wikimedia.org/wikipedia/commons/1/1a/Ashok_Leyland_Dost_Li-Ion.jpg' },
   { name: 'Tata 407', capacity: '2.5 Ton', dimensions: '9FT X 5.5FT X 6FT', img: 'https://upload.wikimedia.org/wikipedia/commons/a/a2/Tata_407_truck.jpg' },
