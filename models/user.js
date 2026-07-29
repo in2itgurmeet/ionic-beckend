@@ -41,6 +41,10 @@ const userSchema = new mongoose.Schema(
       city: String,
       state: String,
       pincode: String,
+      fcmToken: {
+        type: String,
+        default: ""
+      },
       isAvailable: {
         type: Boolean,
         default: true,

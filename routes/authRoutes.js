@@ -25,5 +25,6 @@ router.post("/reset-password", validate(authValidation.resetPassword), resetPass
 router.get("/profile", auth, getProfile);
 router.put("/profile", auth, updateProfile);
 router.put("/profile-image", auth, upload.single("profileImage"), uploadProfileImage);
+router.put("/fcm-token", auth, require("../controller/authController").updateFCMToken);
 
 module.exports = router;

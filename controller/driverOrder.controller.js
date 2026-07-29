@@ -28,6 +28,10 @@ exports.getDriverOrders = async (req, res) => {
     });
 
     const filteredOrders = orders.filter((order) => {
+      // Exclude orders rejected by this driver
+      if (order.rejectedBy && order.rejectedBy.some((id) => id.toString() === driverId)) {
+        return false;
+      }
       /* OLD + NEW BOTH SUPPORT */
       const vehicles =
         order.selectedVehicle?.length > 0
@@ -47,6 +51,10 @@ exports.getDriverOrders = async (req, res) => {
 
         return typeMatch && capacityMatch;
       });
+    }).map((order) => {
+      const o = order.toObject();
+      o.rejected = o.rejectedBy && o.rejectedBy.some((id) => id.toString() === driverId);
+      return o;
     });
 
     return res.status(200).json({
@@ -111,14 +119,14 @@ exports.acceptOrder = async (req, res) => {
       { orderId: order._id },
       {
         vehicle: {
-          number: driver.driver?.vehicleNumber || "MH 04 AA 2025",
-          type: driver.driver?.vehicleType || "20FT Eicher",
-          rtoNo: "HR55"
+          number: driver.driver?.vehicleNumber || "",
+          type: driver.driver?.vehicleType || "",
+          rtoNo: ""
         },
         driver: {
-          name: driver.name,
-          mobile: driver.phone,
-          licenseNo: driver.driver?.licenseNumber || "DL0420110012345"
+          name: driver.name || "",
+          mobile: driver.phone || "",
+          licenseNo: driver.driver?.licenseNumber || ""
         }
       }
     );
@@ -157,6 +165,12 @@ exports.rejectOrder = async (req, res) => {
     order.driverId = null;
     order.driver = null;
     order.status = "Booked";
+    
+    const driverId = req.user.id;
+    if (!order.rejectedBy) order.rejectedBy = [];
+    if (!order.rejectedBy.includes(driverId)) {
+      order.rejectedBy.push(driverId);
+    }
 
     await order.save();
 
@@ -188,22 +202,31 @@ exports.getDriverHistory = async (req, res) => {
       limit = 10
     } = req.query;
 
-    const query = {
-      driverId: driverId
-    };
+    const query = {};
 
-    if (status) {
-      query.status = status;
+    if (!status) {
+      query.$or = [
+        {
+          driverId: driverId,
+          status: {
+            $in: [
+              "Assigned",
+              "Pickup Started",
+              "In-Transit",
+              "Delivered",
+              "Cancelled"
+            ]
+          }
+        },
+        {
+          rejectedBy: driverId
+        }
+      ];
+    } else if (status === 'Rejected') {
+      query.rejectedBy = driverId;
     } else {
-      query.status = {
-        $in: [
-          "Assigned",
-          "Pickup Started",
-          "In-Transit",
-          "Delivered",
-          "Cancelled"
-        ]
-      };
+      query.driverId = driverId;
+      query.status = status;
     }
 
     /* SEARCH FILTER */
@@ -266,7 +289,7 @@ exports.getDriverHistory = async (req, res) => {
       orderId: item.orderId,
       tripNo: item.tripNo,
 
-      status: item.status,
+      status: (item.rejectedBy && item.rejectedBy.some(id => id.toString() === driverId)) ? "Rejected" : item.status,
       bookingType: item.bookingType,
 
       pickup: {
@@ -462,8 +485,8 @@ exports.getDriverStats = async (req, res) => {
       }
     });
 
-    // Mock tips as 5% of earnings (since it's not a field in the model yet)
-    const totalTips = Math.round(totalEarnings * 0.05);
+    // Tips feature not implemented yet, so setting it to 0 instead of fake data
+    const totalTips = 0;
 
     return res.status(200).json({
       success: true,

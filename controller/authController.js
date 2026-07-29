@@ -30,14 +30,7 @@ exports.login = async (req, res) => {
       success: true,
       message: "Login successful",
       token,
-      // user: {
-      //   id: user._id,
-      //   name: user.name,
-      //   role: user.role
-      // }
     });
-
-
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
@@ -171,22 +164,38 @@ exports.getProfile = async (req, res) => {
 
 exports.updateProfile = async (req, res) => {
   try {
-    const { name, email, phone, consigner } = req.body;
+    const { name, email, phone, consigner, driver } = req.body;
+
+    const updateData = { name, email, phone };
+
+    if (consigner) {
+      updateData.consigner = {
+        companyName: consigner.companyName,
+        gstNumber: consigner.gstNumber,
+        address: consigner.address,
+        city: consigner.city,
+        state: consigner.state,
+        pincode: consigner.pincode,
+      };
+    }
+
+    if (driver) {
+      if (driver.licenseNumber !== undefined) updateData['driver.licenseNumber'] = driver.licenseNumber;
+      if (driver.vehicleNumber !== undefined) updateData['driver.vehicleNumber'] = driver.vehicleNumber;
+      if (driver.vehicleType !== undefined) updateData['driver.vehicleType'] = driver.vehicleType;
+      if (driver.vehicleCapacity !== undefined) updateData['driver.vehicleCapacity'] = driver.vehicleCapacity;
+      if (driver.aadhaarNumber !== undefined) updateData['driver.aadhaarNumber'] = driver.aadhaarNumber;
+      if (driver.address !== undefined) updateData['driver.address'] = driver.address;
+      if (driver.city !== undefined) updateData['driver.city'] = driver.city;
+      if (driver.state !== undefined) updateData['driver.state'] = driver.state;
+      if (driver.pincode !== undefined) updateData['driver.pincode'] = driver.pincode;
+      if (driver.isOnline !== undefined) updateData['driver.isOnline'] = driver.isOnline;
+      if (driver.isAvailable !== undefined) updateData['driver.isAvailable'] = driver.isAvailable;
+    }
+
     const updatedUser = await User.findByIdAndUpdate(
       req.user.id,
-      {
-        name,
-        email,
-        phone,
-        consigner: {
-          companyName: consigner?.companyName,
-          gstNumber: consigner?.gstNumber,
-          address: consigner?.address,
-          city: consigner?.city,
-          state: consigner?.state,
-          pincode: consigner?.pincode,
-        }
-      },
+      { $set: updateData },
       { new: true }
     ).select("-password");
 
@@ -215,6 +224,26 @@ exports.uploadProfileImage = async (req, res) => {
       success: true,
       message: "Profile image updated successfully",
       data: updatedUser.profileImage
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.updateFCMToken = async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) {
+      return res.status(400).json({ success: false, message: "FCM Token is required" });
+    }
+    await User.findByIdAndUpdate(
+      req.user.id,
+      { "driver.fcmToken": token },
+      { new: true }
+    );
+    res.status(200).json({
+      success: true,
+      message: "FCM token updated successfully"
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

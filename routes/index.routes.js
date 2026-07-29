@@ -18,6 +18,7 @@ router.use("/auth", authRoutes);
 router.use("/order", orderRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/vehicles", vehicleRoutes);
+router.use("/settings", require("./settings.routes"));
 
 router.use("/invoice", invoiceRoutes);
 router.use("/shipping-label", shippingLabelRoutes);

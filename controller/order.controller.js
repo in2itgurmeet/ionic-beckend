@@ -56,9 +56,15 @@ exports.payment = async (req, res) => {
 exports.getSingleOrder = async (req, res) => {
   try {
     const order = await orderService.getOrderById(req.params.id);
+    const orderData = order.toObject ? order.toObject() : { ...order };
+
+    if (req.user && orderData.rejectedBy && orderData.rejectedBy.some(id => id.toString() === req.user.id)) {
+      orderData.status = "Rejected";
+    }
+
     res.status(200).json({
       success: true,
-      data: order,
+      data: orderData,
     });
   } catch (error) {
     const statusCode = error.message === "Order not found" ? 404 : 500;

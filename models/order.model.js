@@ -148,6 +148,12 @@ const orderSchema = new mongoose.Schema(
       default: 0,
     },
 
+    charges: {
+      freight: { type: Number, default: 0 },
+      loading: { type: Number, default: 0 },
+      unloading: { type: Number, default: 0 },
+    },
+
     paymentType: {
       type: String,
       enum: ["Prepaid", "COD", "TO_PAY", "UPI"],
@@ -184,6 +190,11 @@ const orderSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+
+    rejectedBy: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    }],
   },
   {
     timestamps: true,

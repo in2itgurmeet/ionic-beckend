@@ -290,7 +290,9 @@ exports.updateDriverProfile = async (req, res) => {
         "driver.address": driver?.address,
         "driver.city": driver?.city,
         "driver.state": driver?.state,
-        "driver.pincode": driver?.pincode
+        "driver.pincode": driver?.pincode,
+        "driver.isOnline": driver?.isOnline,
+        "driver.isAvailable": driver?.isAvailable
       },
       { new: true }
     ).select("-password");

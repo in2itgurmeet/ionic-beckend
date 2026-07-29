@@ -5,6 +5,9 @@ const LorryReceipt = require("../models/lorryReceipt.model");
 const ShippingLabel = require("../models/shippingLabel.model");
 const ProofDelivery = require("../models/proofDelivery.model");
 const User = require("../models/user");
+const Settings = require("../models/settings.model");
+const mapService = require("./map.service");
+const barcodeUtils = require("../utils/barcode");
 
 const generateNumber = (prefix) => {
   return prefix + Date.now() + Math.floor(Math.random() * 1000);
@@ -13,9 +16,22 @@ const generateNumber = (prefix) => {
 exports.createOrderStep1 = async (userId, data) => {
   const { bookingType, pickup, delivery } = data;
 
-  const randomDistance = Math.floor(Math.random() * 1300) + 200;
-  const expectedDays = Math.ceil(randomDistance / 400);
-  const expectedTravelTime = `${expectedDays} Day${expectedDays > 1 ? 's' : ''}`;
+  let distanceStr = "0 km";
+  let expectedTravelTime = "N/A";
+  
+  if (pickup?.location && delivery?.location) {
+    const pickupCoords = await mapService.geocodeAddress(pickup.location);
+    const deliveryCoords = await mapService.geocodeAddress(delivery.location);
+    
+    if (pickupCoords && deliveryCoords) {
+      const routeData = await mapService.calculateRoute(pickupCoords, deliveryCoords);
+      if (routeData) {
+        distanceStr = `${routeData.distanceKm} km`;
+        const expectedDays = Math.ceil(routeData.distanceKm / 400);
+        expectedTravelTime = expectedDays > 0 ? `${expectedDays} Day${expectedDays > 1 ? 's' : ''}` : 'Same Day';
+      }
+    }
+  }
 
   const newOrder = await Order.create({
     userId,
@@ -25,7 +41,7 @@ exports.createOrderStep1 = async (userId, data) => {
     bookingType,
     pickup,
     delivery,
-    distance: `${randomDistance} km`,
+    distance: distanceStr,
     expectedTravelTime,
     status: "Draft",
   });
@@ -45,6 +61,9 @@ exports.updateOrderStep2 = async (orderId, data) => {
     selectedVehicle,
     cargoItems,
     amount,
+    freight,
+    loadingCharge,
+    unloadingCharge
   } = data;
 
   const order = await Order.findById(orderId);
@@ -90,6 +109,12 @@ exports.updateOrderStep2 = async (orderId, data) => {
   }
 
   order.amount = amount || 0;
+  
+  order.charges = {
+    freight: freight || amount || 0,
+    loading: loadingCharge || 0,
+    unloading: unloadingCharge || 0,
+  };
 
   await order.save();
   return order;
@@ -104,6 +129,14 @@ exports.processPayment = async (orderId, data) => {
   }
 
   const user = await User.findById(order.userId);
+  let driver = null;
+  if (order.driverId) {
+    driver = await User.findById(order.driverId);
+  }
+
+  // Fetch Settings
+  let settings = await Settings.findOne();
+  if (!settings) settings = await Settings.create({});
 
   order.paymentType = paymentType;
   order.amount = amount;
@@ -119,11 +152,16 @@ exports.processPayment = async (orderId, data) => {
   const invoiceId = generateNumber("INV");
   const invoiceNo = `INV/${new Date().getFullYear().toString().slice(-2)}-${(new Date().getFullYear() + 1).toString().slice(-2)}/${Math.floor(10000 + Math.random() * 90000)}`;
 
-  const transportationCharge = (order.amount * 0.75);
-  const loadingUnloadingCharge = (order.amount * 0.25);
-  const sgstAmount = order.amount * 0.09;
-  const cgstAmount = order.amount * 0.09;
-  const finalAmount = order.amount * 1.18;
+  const sgstPercent = settings.taxes.sgstPercent / 100;
+  const cgstPercent = settings.taxes.cgstPercent / 100;
+  
+  const transportationCharge = order.charges?.freight || order.amount;
+  const loadingUnloadingCharge = (order.charges?.loading || 0) + (order.charges?.unloading || 0);
+  
+  const subTotal = transportationCharge + loadingUnloadingCharge;
+  const sgstAmount = subTotal * sgstPercent;
+  const cgstAmount = subTotal * cgstPercent;
+  const finalAmount = subTotal + sgstAmount + cgstAmount;
 
   const invoice = await Invoice.create({
     orderId: order._id,
@@ -133,31 +171,25 @@ exports.processPayment = async (orderId, data) => {
     date: new Date().toISOString().split('T')[0],
     dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     paymentType: "Prepaid",
-    company: {
-      name: "PLC Logistic Pvt Ltd",
-      logo: "assets/icon/logo.jpg",
-      address: "Plot 21, Sector 18, Gurugram, Haryana - 122015",
-      mobile: "+91 9812345678",
-      email: "support@plclogistics.com"
-    },
+    company: settings.company,
     customer: {
-      name: order.consignorCompany || order.pickup?.person || "STL Group",
-      mobile: order.pickup?.phone || "+91 9999999999",
-      email: `${(order.pickup?.person || "customer").toLowerCase().replace(/\s+/g, '')}@gmail.com`,
-      address: order.pickup?.location || "Noida Sector 63"
+      name: order.consignorCompany || order.pickup?.person || user?.name || "Customer",
+      mobile: order.pickup?.phone || user?.phone || "",
+      email: user?.email || "",
+      address: order.pickup?.location || user?.consigner?.address || ""
     },
     charges: {
       transportation: transportationCharge,
       loadingUnloading: loadingUnloadingCharge
     },
     tax: {
-      sgstPercent: 9,
-      cgstPercent: 9,
+      sgstPercent: settings.taxes.sgstPercent,
+      cgstPercent: settings.taxes.cgstPercent,
       sgstAmount: sgstAmount,
       cgstAmount: cgstAmount
     },
     total: {
-      gross: order.amount,
+      gross: subTotal,
       final: finalAmount,
       paid: finalAmount,
       outstanding: 0
@@ -167,14 +199,14 @@ exports.processPayment = async (orderId, data) => {
       method: paymentType || "UPI",
       transactionId: transactionId || null
     },
-    notes: "Thank you for doing business with us."
+    notes: settings.terms[0] || ""
   });
 
   // Generate LorryReceipt
   const lrNo = order.lrNo || order.tripNo || generateNumber("LR");
   const cnNo = "CN" + Date.now().toString().slice(-8);
   const tripDate = new Date().toISOString().split('T')[0];
-  const ewayBillNo = "72" + Math.floor(1000000000 + Math.random() * 9000000000);
+  const ewayBillNo = "72" + Math.floor(1000000000 + Math.random() * 9000000000); // Optional: Integrate E-way bill API here
   const ewayBillExpiry = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   const expiryDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
@@ -183,39 +215,32 @@ exports.processPayment = async (orderId, data) => {
     userId: order.userId,
     lrNo,
     cnNo,
-    gstNo: "06AABCU9603R1ZV",
-    company: {
-      name: "PLC Logistic Pvt Ltd",
-      logo: "assets/icon/logo.jpg",
-      address: "Plot 21, Sector 18, Gurugram, Haryana - 122015",
-      mobile: "+91 9812345678",
-      email: "support@plclogistics.com",
-      website: "www.plclogistics.com"
-    },
+    gstNo: settings.company.gstNo,
+    company: settings.company,
     tripDate,
     vehicle: {
-      number: order.vehicle?.number || "MH 04 AA 2025",
-      type: order.vehicle?.name || "20FT Eicher",
-      rtoNo: "HR55"
+      number: driver?.driver?.vehicleNumber || "",
+      type: driver?.driver?.vehicleType || order.vehicle?.name || "",
+      rtoNo: ""
     },
     driver: {
-      name: order.driver?.name || "Ravi Kumar",
-      mobile: order.driver?.phone || "+91 9876543210",
-      licenseNo: "DL0420110012345"
+      name: driver?.name || "",
+      mobile: driver?.phone || "",
+      licenseNo: driver?.driver?.licenseNumber || ""
     },
     consignor: {
-      name: order.consignorCompany || order.pickup?.person || user?.name || "STL Group",
-      address: order.pickup?.location || user?.consigner?.address || "Sector 63, Noida, Uttar Pradesh",
-      pincode: user?.consigner?.pincode || "201301",
-      mobile: order.pickup?.phone || user?.phone || "+91 9123456780",
-      gstin: user?.consigner?.gstNumber || "09AAACS1234F1Z2"
+      name: order.consignorCompany || order.pickup?.person || user?.name || "",
+      address: order.pickup?.location || user?.consigner?.address || "",
+      pincode: user?.consigner?.pincode || "",
+      mobile: order.pickup?.phone || user?.phone || "",
+      gstin: user?.consigner?.gstNumber || ""
     },
     consignee: {
-      name: order.consigneeCompany || order.delivery?.person || "ABC Pvt Ltd",
-      address: order.delivery?.location || "Bhiwandi Industrial Area, Thane, Maharashtra",
-      pincode: "421302",
-      mobile: order.delivery?.phone || "+91 9988776655",
-      gstin: "27AACCA5678H1Z1"
+      name: order.consigneeCompany || order.delivery?.person || "",
+      address: order.delivery?.location || "",
+      pincode: "",
+      mobile: order.delivery?.phone || "",
+      gstin: ""
     },
     invoice: {
       invoiceNo,
@@ -224,13 +249,13 @@ exports.processPayment = async (orderId, data) => {
       ewayBillExpiry,
       doNo: "",
       gstPaidBy: "Consignor",
-      containerNo: "CONT12345",
-      lcNo: "LC998877",
+      containerNo: "",
+      lcNo: "",
       expiryDate
     },
     service: {
       type: order.bookingType === "FTL" ? "Full Truck Load" : "Part Truck Load",
-      containerSize: order.vehicle?.dimension || "20FT",
+      containerSize: order.vehicle?.dimension || "",
       date: tripDate
     },
     items: [
@@ -242,16 +267,13 @@ exports.processPayment = async (orderId, data) => {
         amount: order.amount.toLocaleString()
       }
     ],
-    terms: [
-      "Goods once sold will not be accepted.",
-      "Transporter not responsible for damage after dispatch."
-    ],
+    terms: settings.terms,
     receiver: {
-      name: order.delivery?.person || "Amit Sharma",
-      mobile: order.delivery?.phone || "+91 9876501234",
-      signature: "assets/icon/logo.jpg",
+      name: order.delivery?.person || "",
+      mobile: order.delivery?.phone || "",
+      signature: "",
       receivedAt: "",
-      remarks: "Goods received in good condition"
+      remarks: ""
     },
     goods: {
       description: order.cargo?.goodsDescription || "Goods description",
@@ -261,15 +283,21 @@ exports.processPayment = async (orderId, data) => {
     freight: order.amount
   });
 
+  // Generate Barcode dynamically
+  let barcodeImage = "";
+  try {
+    const barcodeValue = order.orderId || generateNumber("BAR");
+    barcodeImage = await barcodeUtils.generateBarcode(barcodeValue);
+  } catch (err) {
+    console.error("Barcode generation failed:", err);
+  }
+
   // Generate ShippingLabel
   const shippingLabel = await ShippingLabel.create({
     orderId: order._id,
     userId: order.userId,
     docketNo: order.docketNo || order.orderId || generateNumber("DKT"),
-    company: {
-      name: "PLC Logistic Pvt Ltd",
-      logo: "assets/icon/logo.jpg"
-    },
+    company: settings.company,
     origin: {
       address: order.pickup?.location || ""
     },
@@ -289,7 +317,7 @@ exports.processPayment = async (orderId, data) => {
     returnToOrigin: true,
     barcode: {
       value: order.orderId || generateNumber("BAR"),
-      imageUrl: "https://www.shutterstock.com/image-vector/horizontal-black-barcode-on-white-600nw-1221838477.jpg"
+      imageUrl: barcodeImage
     }
   });
 
@@ -308,22 +336,68 @@ exports.processPayment = async (orderId, data) => {
     status: "Pending"
   });
 
-  const notification = await Notification.create({
-    recipientId: order.driverId || order.userId,
-    title: "New Order Booked",
-    message: `Order ${order.orderId} is now booked`,
-    type: "ORDER",
-    isRead: false
-  });
+  let recipientIds = [];
+  if (order.driverId) {
+    recipientIds.push(order.driverId);
+  } else if (order.vehicle && order.vehicle.name) {
+    const drivers = await User.find({ 
+      role: "driver", 
+      status: "active",
+      "driver.vehicleType": order.vehicle.name
+    }).select("_id");
+    
+    if (drivers.length > 0) {
+      recipientIds.push(...drivers.map(d => d._id));
+    } else {
+      // Fallback: Notify all drivers if no exact vehicle match is found
+      const allDrivers = await User.find({ role: "driver", status: "active" }).select("_id");
+      recipientIds.push(...allDrivers.map(d => d._id));
+    }
+  } else {
+    const allDrivers = await User.find({ role: "driver", status: "active" }).select("_id");
+    recipientIds.push(...allDrivers.map(d => d._id));
+  }
+
+  // Always also notify the consignor
+  recipientIds.push(order.userId);
+
+  // Remove duplicates just in case
+  recipientIds = [...new Set(recipientIds.map(id => id.toString()))];
+
+  const notifications = [];
+  const { sendPushNotification } = require("./firebase.service");
+
+  for (const recipientId of recipientIds) {
+    const notification = await Notification.create({
+      recipientId: recipientId,
+      title: "New Order Booked",
+      message: `Order ${order.orderId} is now booked`,
+      type: "ORDER",
+      isRead: false
+    });
+    notifications.push(notification);
+
+    if (global.io) {
+      global.io.to(recipientId.toString()).emit("notification", notification);
+    }
+
+    // Try to send native push notification
+    const recipientUser = await User.findById(recipientId).select("driver.fcmToken");
+    if (recipientUser && recipientUser.driver && recipientUser.driver.fcmToken) {
+      await sendPushNotification(
+        recipientUser.driver.fcmToken,
+        notification.title,
+        notification.message,
+        { orderId: order.orderId }
+      );
+    }
+  }
 
   if (global.io) {
     global.io.emit("newOrder", {
       orderId: order.orderId,
       status: order.status,
     });
-    if (order.driverId) {
-      global.io.to(order.driverId.toString()).emit("notification", notification);
-    }
   }
 
   return order;
