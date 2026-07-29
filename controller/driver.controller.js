@@ -86,7 +86,7 @@ exports.driverLogin = async (req, res) => {
     const token = jwt.sign(
       { id: user._id, role: user.role },
       "SECRET_KEY",
-      { expiresIn: "7d" }
+      { expiresIn: "30m" }
     );
 
     res.status(200).json({
@@ -335,6 +335,8 @@ exports.getDriverProfileImage = async (req, res) => {
 };
 // UPDATE DRIVER PROFILE IMAGE ONLY
 // PUT /driver/profile-image
+const { uploadToCloudinary } = require('../utils/cloudinary');
+
 exports.uploadDriverProfileImage = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -346,15 +348,14 @@ exports.uploadDriverProfileImage = async (req, res) => {
       });
     }
 
-    // Base64 convert
-    const base64Image =
-      `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
+    // Upload image to Cloudinary
+    const imageUrl = await uploadToCloudinary(req.file.buffer, 'driver_profiles');
 
     // Save in DB
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       {
-        profileImage: base64Image
+        profileImage: imageUrl
       },
       {
         new: true

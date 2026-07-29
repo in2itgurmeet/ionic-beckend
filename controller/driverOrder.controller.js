@@ -396,11 +396,13 @@ exports.updateDriverOrderStatus = async (req, res) => {
 /* ===================================================
    UPLOAD DRIVER POD (DELIVER TRIP)
 =================================================== */
+const { uploadToCloudinary } = require('../utils/cloudinary');
+
 exports.uploadDriverPOD = async (req, res) => {
   try {
     const driverId = req.user.id;
     const { orderId } = req.params;
-    const { signatureImage, deliveryPhoto, remarks, receiverName, receiverMobile } = req.body;
+    let { signatureImage, deliveryPhoto, remarks, receiverName, receiverMobile } = req.body;
 
     const order = await Order.findById(orderId);
     if (!order) {
@@ -415,6 +417,14 @@ exports.uploadDriverPOD = async (req, res) => {
         success: false,
         message: "You are not authorized to upload POD for this order",
       });
+    }
+    
+    // Upload base64 strings to Cloudinary
+    if (signatureImage && signatureImage.startsWith('data:')) {
+      signatureImage = await uploadToCloudinary(signatureImage, 'pod_signatures');
+    }
+    if (deliveryPhoto && deliveryPhoto.startsWith('data:')) {
+      deliveryPhoto = await uploadToCloudinary(deliveryPhoto, 'pod_photos');
     }
 
     // Update order status to Delivered

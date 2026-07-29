@@ -24,7 +24,7 @@ exports.login = async (req, res) => {
     const token = jwt.sign(
       { id: user._id, role: user.role, name: user.name },
       "SECRET_KEY",
-      { expiresIn: "1d" }
+      { expiresIn: "30m" }
     );
     res.status(200).json({
       success: true,
@@ -209,15 +209,20 @@ exports.updateProfile = async (req, res) => {
   }
 };
 
+const { uploadToCloudinary } = require('../utils/cloudinary');
+
 exports.uploadProfileImage = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: "Please upload an image" });
     }
-    const base64Image = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
+    
+    // Upload image to Cloudinary
+    const imageUrl = await uploadToCloudinary(req.file.buffer, 'user_profiles');
+
     const updatedUser = await User.findByIdAndUpdate(
       req.user.id,
-      { profileImage: base64Image },
+      { profileImage: imageUrl },
       { new: true }
     );
     res.status(200).json({
