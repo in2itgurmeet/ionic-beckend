@@ -83,7 +83,8 @@ const lorryReceiptSchema = new mongoose.Schema(
         unit: { type: String, default: "Box" },
         weightKg: { type: Number, default: 0 },
         quantity: { type: Number, default: 0 },
-        amount: { type: String, default: "0" }
+        amount: { type: String, default: "0" },
+        dimension: { type: String, default: "" }
       }
     ],
     terms: {

@@ -17,6 +17,24 @@ exports.step1 = async (req, res) => {
   }
 };
 
+exports.updateStep1 = async (req, res) => {
+  try {
+    const order = await orderService.updateOrderStep1(req.params.id, req.body);
+    res.status(200).json({
+      success: true,
+      message: "Step 1 Updated Successfully",
+      data: order,
+    });
+  } catch (error) {
+    const statusCode = error.message === "Order not found" ? 404 : 500;
+    res.status(statusCode).json({
+      success: false,
+      message: error.message === "Order not found" ? "Order not found" : "Failed to update Step 1",
+      error: error.message,
+    });
+  }
+};
+
 exports.step2 = async (req, res) => {
   try {
     const order = await orderService.updateOrderStep2(req.params.id, req.body);

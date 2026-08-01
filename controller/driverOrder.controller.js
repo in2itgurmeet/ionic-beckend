@@ -80,40 +80,42 @@ exports.acceptOrder = async (req, res) => {
 
     const driver = await User.findById(driverId);
 
-    const order = await Order.findById(orderId);
+    const order = await Order.findOneAndUpdate(
+      { _id: orderId, status: "Booked" },
+      {
+        $set: {
+          driverId: driverId,
+          driver: {
+            name: driver.name,
+            mobile: driver.phone,
+          },
+          vehicle: {
+            name: driver.driver?.vehicleType,
+            number: driver.driver?.vehicleNumber,
+            capacity: driver.driver?.vehicleCapacity,
+            dimension: driver.driver?.vehicleDimension,
+          },
+          status: "Assigned",
+          acceptedAt: new Date(),
+        }
+      },
+      { new: true }
+    );
 
     if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found",
-      });
-    }
-
-    if (order.status !== "Booked") {
+      // Check if order exists but status is not "Booked" (meaning someone else took it)
+      const existingOrder = await Order.findById(orderId);
+      if (!existingOrder) {
+        return res.status(404).json({
+          success: false,
+          message: "Order not found",
+        });
+      }
       return res.status(400).json({
         success: false,
         message: "Order already assigned",
       });
     }
-
-    order.driverId = driverId;
-
-    order.driver = {
-      name: driver.name,
-      mobile: driver.phone,
-    };
-
-    order.vehicle = {
-      name: driver.driver?.vehicleType,
-      number: driver.driver?.vehicleNumber,
-      capacity: driver.driver?.vehicleCapacity,
-      dimension: driver.driver?.vehicleDimension,
-    };
-
-    order.status = "Assigned";
-    order.acceptedAt = new Date();
-
-    await order.save();
 
     await LorryReceipt.findOneAndUpdate(
       { orderId: order._id },

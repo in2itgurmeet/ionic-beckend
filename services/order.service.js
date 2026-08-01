@@ -49,6 +49,54 @@ exports.createOrderStep1 = async (userId, data) => {
   return newOrder;
 };
 
+exports.updateOrderStep1 = async (orderId, data) => {
+  const { bookingType, pickup, delivery } = data;
+
+  const order = await Order.findById(orderId);
+  if (!order) {
+    throw new Error("Order not found");
+  }
+
+  let distanceStr = order.distance;
+  let expectedTravelTime = order.expectedTravelTime;
+
+  if (pickup?.location && delivery?.location) {
+    const pickupCoords = await mapService.geocodeAddress(pickup.location);
+    const deliveryCoords = await mapService.geocodeAddress(delivery.location);
+    
+    if (pickupCoords && deliveryCoords) {
+      const routeData = await mapService.calculateRoute(pickupCoords, deliveryCoords);
+      if (routeData) {
+        distanceStr = `${routeData.distanceKm} km`;
+        const expectedDays = Math.ceil(routeData.distanceKm / 400);
+        expectedTravelTime = expectedDays > 0 ? `${expectedDays} Day${expectedDays > 1 ? 's' : ''}` : 'Same Day';
+      }
+    }
+  }
+
+  order.bookingType = bookingType;
+  
+  if (pickup) {
+    if (!order.pickup) order.pickup = {};
+    order.pickup.location = pickup.location;
+    order.pickup.date = pickup.date;
+    order.pickup.time = pickup.time;
+  }
+
+  if (delivery) {
+    if (!order.delivery) order.delivery = {};
+    order.delivery.location = delivery.location;
+    order.delivery.date = delivery.date;
+    order.delivery.time = delivery.time;
+  }
+
+  order.distance = distanceStr;
+  order.expectedTravelTime = expectedTravelTime;
+
+  await order.save();
+  return order;
+};
+
 exports.updateOrderStep2 = async (orderId, data) => {
   const {
     referenceNumber,
@@ -95,17 +143,23 @@ exports.updateOrderStep2 = async (orderId, data) => {
   }
 
   if (cargoItems?.length > 0) {
-    const firstCargo = cargoItems[0];
+    order.cargo = cargoItems.map(item => {
+      let dimensionStr = "N/A";
+      if (item.length != null && item.width != null && item.height != null) {
+        dimensionStr = `${item.length} x ${item.width} x ${item.height}`;
+      } else if (item.dimensionCM) {
+        dimensionStr = `${item.dimensionCM} CM³`;
+      }
+      return {
+        goodsDescription: item.goodsDescription,
+        quantity: item.quantity,
+        weight: item.weight,
+        dimension: dimensionStr,
+      };
+    });
 
-    order.cargo = {
-      goodsDescription: firstCargo.goodsDescription,
-      quantity: firstCargo.quantity,
-      weight: firstCargo.weight,
-      dimension: `${firstCargo.length} x ${firstCargo.width} x ${firstCargo.height}`,
-    };
-
-    order.quantity = firstCargo.quantity;
-    order.weight = `${firstCargo.weight}kg`;
+    order.quantity = cargoItems.reduce((acc, item) => acc + (item.quantity || 0), 0);
+    order.weight = `${cargoItems.reduce((acc, item) => acc + (item.weight || 0), 0)}kg`;
   }
 
   order.amount = amount || 0;
@@ -163,44 +217,47 @@ exports.processPayment = async (orderId, data) => {
   const cgstAmount = subTotal * cgstPercent;
   const finalAmount = subTotal + sgstAmount + cgstAmount;
 
-  const invoice = await Invoice.create({
-    orderId: order._id,
-    userId: order.userId,
-    invoiceId,
-    invoiceNo,
-    date: new Date().toISOString().split('T')[0],
-    dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    paymentType: "Prepaid",
-    company: settings.company,
-    customer: {
-      name: order.consignorCompany || order.pickup?.person || user?.name || "Customer",
-      mobile: order.pickup?.phone || user?.phone || "",
-      email: user?.email || "",
-      address: order.pickup?.location || user?.consigner?.address || ""
+  const invoice = await Invoice.findOneAndUpdate(
+    { orderId: order._id },
+    {
+      userId: order.userId,
+      invoiceId,
+      invoiceNo,
+      date: new Date().toISOString().split('T')[0],
+      dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      paymentType: "Prepaid",
+      company: settings.company,
+      customer: {
+        name: order.consignorCompany || order.pickup?.person || user?.name || "Customer",
+        mobile: order.pickup?.phone || user?.phone || "",
+        email: user?.email || "",
+        address: order.pickup?.location || user?.consigner?.address || ""
+      },
+      charges: {
+        transportation: transportationCharge,
+        loadingUnloading: loadingUnloadingCharge
+      },
+      tax: {
+        sgstPercent: settings.taxes.sgstPercent,
+        cgstPercent: settings.taxes.cgstPercent,
+        sgstAmount: sgstAmount,
+        cgstAmount: cgstAmount
+      },
+      total: {
+        gross: subTotal,
+        final: finalAmount,
+        paid: finalAmount,
+        outstanding: 0
+      },
+      payment: {
+        status: "PAID",
+        method: paymentType || "UPI",
+        transactionId: transactionId || null
+      },
+      notes: settings.terms[0] || ""
     },
-    charges: {
-      transportation: transportationCharge,
-      loadingUnloading: loadingUnloadingCharge
-    },
-    tax: {
-      sgstPercent: settings.taxes.sgstPercent,
-      cgstPercent: settings.taxes.cgstPercent,
-      sgstAmount: sgstAmount,
-      cgstAmount: cgstAmount
-    },
-    total: {
-      gross: subTotal,
-      final: finalAmount,
-      paid: finalAmount,
-      outstanding: 0
-    },
-    payment: {
-      status: "PAID",
-      method: paymentType || "UPI",
-      transactionId: transactionId || null
-    },
-    notes: settings.terms[0] || ""
-  });
+    { upsert: true, new: true }
+  );
 
   // Generate LorryReceipt
   const lrNo = order.lrNo || order.tripNo || generateNumber("LR");
@@ -210,78 +267,91 @@ exports.processPayment = async (orderId, data) => {
   const ewayBillExpiry = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   const expiryDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-  const lorryReceipt = await LorryReceipt.create({
-    orderId: order._id,
-    userId: order.userId,
-    lrNo,
-    cnNo,
-    gstNo: settings.company.gstNo,
-    company: settings.company,
-    tripDate,
-    vehicle: {
-      number: driver?.driver?.vehicleNumber || "",
-      type: driver?.driver?.vehicleType || order.vehicle?.name || "",
-      rtoNo: ""
+  const lorryReceipt = await LorryReceipt.findOneAndUpdate(
+    { orderId: order._id },
+    {
+      userId: order.userId,
+      lrNo,
+      cnNo,
+      gstNo: settings.company.gstNo,
+      company: settings.company,
+      tripDate,
+      vehicle: {
+        number: driver?.driver?.vehicleNumber || "",
+        type: driver?.driver?.vehicleType || order.vehicle?.name || "",
+        rtoNo: ""
+      },
+      driver: {
+        name: driver?.name || "",
+        mobile: driver?.phone || "",
+        licenseNo: driver?.driver?.licenseNumber || ""
+      },
+      consignor: {
+        name: order.consignorCompany || order.pickup?.person || user?.name || "",
+        address: order.pickup?.location || user?.consigner?.address || "",
+        pincode: user?.consigner?.pincode || "",
+        mobile: order.pickup?.phone || user?.phone || "",
+        gstin: user?.consigner?.gstNumber || ""
+      },
+      consignee: {
+        name: order.consigneeCompany || order.delivery?.person || "",
+        address: order.delivery?.location || "",
+        pincode: "",
+        mobile: order.delivery?.phone || "",
+        gstin: ""
+      },
+      invoice: {
+        invoiceNo,
+        referenceNo: order.orderId,
+        ewayBillNo,
+        ewayBillExpiry,
+        doNo: "",
+        gstPaidBy: "Consignor",
+        containerNo: "",
+        lcNo: "",
+        expiryDate
+      },
+      service: {
+        type: order.bookingType === "FTL" ? "Full Truck Load" : "Part Truck Load",
+        containerSize: order.vehicle?.dimension || "",
+        date: tripDate
+      },
+      items: Array.isArray(order.cargo) && order.cargo.length > 0
+        ? order.cargo.map(c => ({
+            description: c.goodsDescription || "Goods Description",
+            unit: "Box",
+            weightKg: c.weight || 0,
+            quantity: c.quantity || 1,
+            amount: (order.amount / order.cargo.length).toLocaleString(), // roughly divide amount or keep 0
+            dimension: c.dimension || ""
+          }))
+        : [
+            {
+              description: order.cargo?.goodsDescription || "Goods Description",
+              unit: "Box",
+              weightKg: order.cargo?.weight || 0,
+              quantity: order.cargo?.quantity || 1,
+              amount: (order.amount || 0).toLocaleString(),
+              dimension: order.cargo?.dimension || ""
+            }
+          ],
+      terms: settings.terms,
+      receiver: {
+        name: order.delivery?.person || "",
+        mobile: order.delivery?.phone || "",
+        signature: "",
+        receivedAt: "",
+        remarks: ""
+      },
+      goods: {
+        description: order.cargo?.goodsDescription || "Goods description",
+        weight: order.cargo?.weight || parseFloat(order.weight) || 0,
+        quantity: order.cargo?.quantity || order.quantity || 1
+      },
+      freight: order.amount
     },
-    driver: {
-      name: driver?.name || "",
-      mobile: driver?.phone || "",
-      licenseNo: driver?.driver?.licenseNumber || ""
-    },
-    consignor: {
-      name: order.consignorCompany || order.pickup?.person || user?.name || "",
-      address: order.pickup?.location || user?.consigner?.address || "",
-      pincode: user?.consigner?.pincode || "",
-      mobile: order.pickup?.phone || user?.phone || "",
-      gstin: user?.consigner?.gstNumber || ""
-    },
-    consignee: {
-      name: order.consigneeCompany || order.delivery?.person || "",
-      address: order.delivery?.location || "",
-      pincode: "",
-      mobile: order.delivery?.phone || "",
-      gstin: ""
-    },
-    invoice: {
-      invoiceNo,
-      referenceNo: order.orderId,
-      ewayBillNo,
-      ewayBillExpiry,
-      doNo: "",
-      gstPaidBy: "Consignor",
-      containerNo: "",
-      lcNo: "",
-      expiryDate
-    },
-    service: {
-      type: order.bookingType === "FTL" ? "Full Truck Load" : "Part Truck Load",
-      containerSize: order.vehicle?.dimension || "",
-      date: tripDate
-    },
-    items: [
-      {
-        description: order.cargo?.goodsDescription || "Goods Description",
-        unit: "Box",
-        weightKg: order.cargo?.weight || 0,
-        quantity: order.cargo?.quantity || 1,
-        amount: order.amount.toLocaleString()
-      }
-    ],
-    terms: settings.terms,
-    receiver: {
-      name: order.delivery?.person || "",
-      mobile: order.delivery?.phone || "",
-      signature: "",
-      receivedAt: "",
-      remarks: ""
-    },
-    goods: {
-      description: order.cargo?.goodsDescription || "Goods description",
-      weight: order.cargo?.weight || parseFloat(order.weight) || 0,
-      quantity: order.cargo?.quantity || order.quantity || 1
-    },
-    freight: order.amount
-  });
+    { upsert: true, new: true }
+  );
 
   // Generate Barcode dynamically
   let barcodeImage = "";
@@ -293,48 +363,54 @@ exports.processPayment = async (orderId, data) => {
   }
 
   // Generate ShippingLabel
-  const shippingLabel = await ShippingLabel.create({
-    orderId: order._id,
-    userId: order.userId,
-    docketNo: order.docketNo || order.orderId || generateNumber("DKT"),
-    company: settings.company,
-    origin: {
-      address: order.pickup?.location || ""
+  const shippingLabel = await ShippingLabel.findOneAndUpdate(
+    { orderId: order._id },
+    {
+      userId: order.userId,
+      docketNo: order.docketNo || order.orderId || generateNumber("DKT"),
+      company: settings.company,
+      origin: {
+        address: order.pickup?.location || ""
+      },
+      destination: {
+        address: order.delivery?.location || ""
+      },
+      shipment: {
+        date: new Date().toISOString().split('T')[0],
+        weight: `${order.cargo?.weight || order.weight || 0}kg`,
+        totalPackages: order.cargo?.quantity || order.quantity || 1,
+        currentPackage: 1
+      },
+      invoiceId: invoice._id,
+      invoice: {
+        invoiceNo
+      },
+      returnToOrigin: true,
+      barcode: {
+        value: order.orderId || generateNumber("BAR"),
+        imageUrl: barcodeImage
+      }
     },
-    destination: {
-      address: order.delivery?.location || ""
-    },
-    shipment: {
-      date: new Date().toISOString().split('T')[0],
-      weight: `${order.cargo?.weight || order.weight || 0}kg`,
-      totalPackages: order.cargo?.quantity || order.quantity || 1,
-      currentPackage: 1
-    },
-    invoiceId: invoice._id,
-    invoice: {
-      invoiceNo
-    },
-    returnToOrigin: true,
-    barcode: {
-      value: order.orderId || generateNumber("BAR"),
-      imageUrl: barcodeImage
-    }
-  });
+    { upsert: true, new: true }
+  );
 
   // Generate ProofDelivery
-  const proofDelivery = await ProofDelivery.create({
-    orderId: order._id,
-    userId: order.userId,
-    receiver: {
-      name: order.delivery?.person || "",
-      mobile: order.delivery?.phone || ""
+  const proofDelivery = await ProofDelivery.findOneAndUpdate(
+    { orderId: order._id },
+    {
+      userId: order.userId,
+      receiver: {
+        name: order.delivery?.person || "",
+        mobile: order.delivery?.phone || ""
+      },
+      deliveredAt: "",
+      signatureImage: "",
+      deliveryPhoto: "",
+      remarks: "",
+      status: "Pending"
     },
-    deliveredAt: "",
-    signatureImage: "",
-    deliveryPhoto: "",
-    remarks: "",
-    status: "Pending"
-  });
+    { upsert: true, new: true }
+  );
 
   let recipientIds = [];
   if (order.driverId) {

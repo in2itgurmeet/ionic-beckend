@@ -136,12 +136,12 @@ const orderSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
-    cargo: {
+    cargo: [{
       goodsDescription: String,
       quantity: Number,
       weight: Number,
       dimension: String,
-    },
+    }],
 
     amount: {
       type: Number,

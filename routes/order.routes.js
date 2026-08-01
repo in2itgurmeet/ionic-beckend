@@ -3,6 +3,7 @@ const router = express.Router();
 
 const {
   step1,
+  updateStep1,
   step2,
   payment,
   orderlist,
@@ -13,6 +14,7 @@ const {
 const auth = require("../middleware/authMiddleware");
 
 router.post("/step1", auth, step1);
+router.put("/step1/:id", auth, updateStep1);
 
 router.put("/step2/:id", auth, step2);
 

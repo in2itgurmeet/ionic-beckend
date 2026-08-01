@@ -13,12 +13,14 @@ const driverRoutes = require("./driver.routes");
 const driverOrderRoutes = require("./driverOrder.routes");
 const orderNotification = require("./notification.routes");
 const vehicleRoutes = require("./vehicle.routes");
+const feedbackRoutes = require("./feedback.routes");
 
 router.use("/auth", authRoutes);
 router.use("/order", orderRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/vehicles", vehicleRoutes);
 router.use("/settings", require("./settings.routes"));
+router.use("/feedback", feedbackRoutes);
 
 router.use("/invoice", invoiceRoutes);
 router.use("/shipping-label", shippingLabelRoutes);
